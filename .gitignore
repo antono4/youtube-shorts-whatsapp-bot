@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+.venv
+
+# WhatsApp session
+whatsapp_session/
+whatsapp_profile/
+*.crx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Chrome
+chrome/
+chromedriver*
+
+# Generated scripts (optional - keep if you want)
+# scripts/*.json
