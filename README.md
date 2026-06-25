@@ -31,22 +31,38 @@ Auto-generated YouTube Shorts content scripts dalam Bahasa Indonesia 🇮🇩
 
 ## 🚀 Cara Pakai
 
-### 1. Generate Script Manual
+### 1. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Kirim Script ke WhatsApp (0895338853706)
+
+```bash
+cd whatsapp_bot
+python send_now.py
+```
+
+Script akan otomatis di-generate dan dikirim ke WhatsApp kamu!
+
+### 3. Auto-Reply Bot (Terima Pesan)
+
+```bash
+cd whatsapp_bot
+python auto_reply_bot.py
+```
+
+Bot akan otomatis merespon pesan yang masuk dengan script YouTube Shorts.
+
+### 4. Generate Script Manual
 
 ```bash
 cd youtube_shorts_generator
 python youtube_shorts_generator.py
 ```
 
-### 2. Jalankan WhatsApp Bot
-
-```bash
-cd whatsapp_bot
-pip install -r requirements.txt
-python whatsapp_bot.py
-```
-
-### 3. WhatsApp Bot Commands
+## 📱 WhatsApp Bot Commands
 
 | Command | Fungsi |
 |---------|--------|
@@ -61,6 +77,18 @@ python whatsapp_bot.py
 | `!stats` | Statistik penggunaan |
 | `!schedule` | Setup auto-generate |
 | `!stop` | Stop auto-generate |
+
+## ⚙️ Setup WhatsApp
+
+### Method 1: pywhatkit (Recommended)
+- Install Chrome browser
+- Jalankan `send_now.py`
+- Bot akan buka WhatsApp Web dan kirim pesan
+
+### Method 2: Auto-Reply Bot
+- Jalankan `auto_reply_bot.py`
+- Scan QR code WhatsApp Web sekali
+- Bot akan auto-reply pesan masuk |
 
 ## 📄 Output Format
 
