@@ -1,5 +1,8 @@
 # 🎬 YouTube Shorts Generator & WhatsApp Bot
 
+> **Created by Antono**
+
+
 Auto-generated YouTube Shorts content scripts dalam Bahasa Indonesia 🇮🇩
 
 ## 📋 Fitur
