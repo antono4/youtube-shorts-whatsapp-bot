@@ -271,6 +271,21 @@ def test_duplicate_start_schedule_guard():
     asyncio.run(run())
 
 
+def test_start_schedule_must_be_awaited_to_activate():
+    """Regression for codereviewbot: run_cli called start_schedule without `await`,
+    so the coroutine never ran, schedule_active stayed False, and the scheduling
+    while-loop exited immediately. Awaiting it must flip schedule_active on."""
+    async def run():
+        bot = make_bot()
+        fc = FakeClient()
+        out = await bot.start_schedule(fc, "+628123")
+        assert "dimulai" in out
+        assert bot.schedule_active is True
+        assert bot.schedule_task is not None
+
+    asyncio.run(run())
+
+
 # ---------------------------------------------------------------- CLI
 
 

@@ -688,12 +688,14 @@ async def run_cli(args) -> None:
                 return
 
         bot.set_whatsapp_client(wa_client, args.target)
-        print(bot.start_schedule(wa_client, args.target))
+        # start_schedule is async and kicks off the background loop — MUST await it,
+        # otherwise the coroutine never runs, schedule_active stays False, and the
+        # while loop below exits immediately.
+        print(await bot.start_schedule(wa_client, args.target))
         try:
             while bot.schedule_active:
                 await asyncio.sleep(1)
         except asyncio.CancelledError:
-            bot.stop_schedule()
             print(bot.stop_schedule())
 
 
