@@ -9,6 +9,12 @@ venv/
 .env
 .venv
 
+# Packaging / build
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
 # WhatsApp session
 whatsapp_session/
 whatsapp_profile/
