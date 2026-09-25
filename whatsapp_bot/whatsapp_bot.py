@@ -11,7 +11,7 @@ Alternative: Use WhatsApp Web API with selenium
 """
 
 import json
-import os
+import sys
 import time
 import asyncio
 import logging
@@ -74,23 +74,32 @@ class YouTubeShortsWhatsAppBot:
         "!about": "Tentang bot ini"
     }
     
-    def __init__(self, session_path: str = "./whatsapp_session"):
+    def __init__(self, session_path: str = "./whatsapp_session", output_dir: str = "whatsapp_bot/scripts"):
         self.session_path = session_path
+        self.output_dir = output_dir
         self.scripts = []
         self.schedule_active = False
         self.schedule_task = None
         self.current_niche_index = 0
+        # WhatsApp client + default target used by the auto-generate schedule.
+        # Configure these (via set_whatsapp_client / the CLI) before !start.
+        self.whatsapp_client = None
+        self.target_number = None
         self.stats = {
             "total_generated": 0,
             "total_sent": 0,
             "start_time": datetime.now().isoformat()
         }
-        
-        # Import YouTube Shorts Generator
-        import sys
-        sys.path.append(str(Path(__file__).parent.parent / "youtube_shorts_generator"))
+
+        # YouTube Shorts Generator (imported from the package root)
         from youtube_shorts_generator import YouTubeShortsGenerator
         self.generator = YouTubeShortsGenerator()
+
+    def set_whatsapp_client(self, client, target_number: Optional[str] = None) -> None:
+        """Attach a WhatsApp client and optional default target for `!start`."""
+        self.whatsapp_client = client
+        if target_number is not None:
+            self.target_number = target_number
     
     def format_script_message(self, script: Dict) -> str:
         """Format script untuk dikirim via WhatsApp"""
@@ -217,31 +226,35 @@ _by YouTube Shorts Bot 🇮🇩_
             return "❌ Belum ada script yang dibuat!"
         
         last_script = self.scripts[-1]
-        filename = f"whatsapp_bot/scripts/script_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        
+        filename = f"script_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
         # Ensure directory exists
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
-        
-        with open(filename, "w", encoding="utf-8") as f:
+        path = Path(self.output_dir) / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(last_script, f, ensure_ascii=False, indent=2)
-        
-        return f"✅ Script disimpan ke: {filename}"
+
+        return f"✅ Script disimpan ke: {path}"
     
     def export_all_scripts(self) -> str:
         """Export all scripts to JSON file"""
         if not self.scripts:
             return "❌ Belum ada script untuk di-export!"
         
-        filename = f"whatsapp_bot/all_scripts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        
-        with open(filename, "w", encoding="utf-8") as f:
+        filename = f"all_scripts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+        path = Path(self.output_dir) / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(path, "w", encoding="utf-8") as f:
             json.dump({
                 "export_date": datetime.now().isoformat(),
                 "total_scripts": len(self.scripts),
                 "scripts": self.scripts
             }, f, ensure_ascii=False, indent=2)
-        
-        return f"✅ {len(self.scripts)} script di-export ke: {filename}"
+
+        return f"✅ {len(self.scripts)} script di-export ke: {path}"
     
     def get_stats(self) -> str:
         """Get bot statistics"""
@@ -272,20 +285,25 @@ _by YouTube Shorts Bot 🇮🇩_
         return "✅ Auto-generate schedule dimulai! (setiap 5 menit)"
     
     async def _schedule_loop(self, whatsapp_client, target_number: str):
-        """Internal schedule loop"""
+        """Internal schedule loop.
+
+        Note: ``WhatsAppClient.send_message`` is synchronous (it hands the
+        message to pywhatkit/selenium), so it must NOT be awaited here.
+        """
         while self.schedule_active:
             try:
                 # Generate script
                 script = self.generate_script()
                 message = self.format_script_message(script)
-                
-                # Send via WhatsApp
-                await whatsapp_client.send_message(target_number, message)
-                self.stats["total_sent"] += 1
-                
+
+                # Send via WhatsApp (synchronous method - do not await)
+                ok = whatsapp_client.send_message(target_number, message)
+                if ok:
+                    self.stats["total_sent"] += 1
+
                 # Wait 5 minutes
                 await asyncio.sleep(300)  # 5 minutes
-                
+
             except Exception as e:
                 print(f"❌ Schedule error: {e}")
                 await asyncio.sleep(60)  # Retry in 1 minute
@@ -386,16 +404,54 @@ _by OpenHands Agent 🤖_
             return self.get_stats()
         
         elif cmd == "!schedule":
-            return "📅 Ketik *!start* untuk mulai auto-generate"
-        
+            return self._schedule_status()
+
         elif cmd == "!start":
-            return "✅ Bot siap! Ketik *!generate* untuk mulai."
-        
+            return self._start_schedule_command()
+
         elif cmd == "!stop":
             return self.stop_schedule()
-        
+
         else:
             return f"❌ Perintah '{cmd}' tidak dikenal!\n\nKetik *!help* untuk melihat semua perintah."
+
+    def _schedule_status(self) -> str:
+        """Report the current auto-generate schedule state."""
+        if not self.whatsapp_client:
+            return ("⚠️ Auto-generate belum dikonfigurasi!\n\n"
+                    "Pasang WhatsApp client dengan:\n"
+                    "`bot.set_whatsapp_client(wa_client, '+628xxxx')`\n"
+                    "atau jalankan CLI dengan flag `--target`.")
+        if self.schedule_active:
+            return "⏳ Auto-generate schedule sedang berjalan! (setiap 5 menit)"
+        return f"📅 Auto-generate siap ke: {self.target_number or '?'}\nKetik *!start* untuk mulai."
+
+    def _start_schedule_command(self) -> str:
+        """Start the auto-generate schedule if a WhatsApp client is configured."""
+        if not self.whatsapp_client:
+            return ("❌ WhatsApp client belum dikonfigurasi!\n\n"
+                    "Pasang dengan `bot.set_whatsapp_client(wa_client, target)`\n"
+                    "atau jalankan CLI dengan flag `--target <nomor>`.")
+        if not self.target_number:
+            return "❌ Nomor tujuan belum disetel! Gunakan `set_whatsapp_client(client, '+628xxxx')`."
+
+        # Schedule needs a running event loop (start_schedule creates a task).
+        try:
+            asyncio.get_running_loop()
+            loop_running = True
+        except RuntimeError:
+            loop_running = False
+
+        if loop_running:
+            if self.schedule_active:
+                return "⚠️ Schedule sudah aktif!"
+            self.schedule_active = True
+            self.schedule_task = asyncio.ensure_future(
+                self._schedule_loop(self.whatsapp_client, self.target_number)
+            )
+            return "✅ Auto-generate schedule dimulai! (setiap 5 menit)"
+        return ("⚠️ Auto-generate membutuhkan event loop berjalan.\n"
+                "Gunakan CLI: `python -m whatsapp_bot.whatsapp_bot --schedule --target <nomor>`")
 
 
 class WhatsAppClient:
@@ -572,66 +628,108 @@ class WhatsAppClient:
         logger.info("🔌 Disconnected from WhatsApp")
 
 
-async def main():
-    """Main bot execution"""
-    print("=" * 50)
-    print("🎬 YouTube Shorts WhatsApp Bot")
-    print("🇮🇩 Indonesian Content Generator")
-    print("=" * 50)
-    
-    # Initialize bot
+def _parse_args(argv=None):
+    """Parse CLI arguments."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="yts-bot",
+        description="YouTube Shorts WhatsApp bot - Indonesian content generator",
+    )
+    parser.add_argument("--demo", action="store_true",
+                        help="Run the formatting self-test and exit")
+    parser.add_argument("--generate", action="store_true",
+                        help="Generate one script and print it as JSON")
+    parser.add_argument("--niche", default=None,
+                        help="Niche to generate (default: rotate through all)")
+    parser.add_argument("--save", metavar="DIR", default=None,
+                        help="Also save the generated script into DIR")
+    parser.add_argument("--schedule", action="store_true",
+                        help="Start the auto-generate loop (every 5 minutes)")
+    parser.add_argument("--target", default=None,
+                        help="Target WhatsApp number, with country code (e.g. +628...)")
+    parser.add_argument("--method", choices=["pywhatkit", "selenium"], default="pywhatkit",
+                        help="WhatsApp send method (default: pywhatkit)")
+    return parser.parse_args(argv)
+
+
+async def run_cli(args) -> None:
+    """Drive the bot from parsed CLI arguments."""
     bot = YouTubeShortsWhatsAppBot()
-    
-    # Test generate
-    print("\n📝 Generating test script...")
+
+    if args.demo:
+        await _demo(bot)
+        return
+
+    # Generate (and optionally save) one script.
+    if args.generate or args.niche:
+        script = bot.generate_script(args.niche)
+        print(json.dumps(script, ensure_ascii=False, indent=2))
+        if args.save:
+            from youtube_shorts_generator import YouTubeShortsGenerator
+            path = YouTubeShortsGenerator().save_script(script, output_dir=args.save)
+            print(f"✅ Saved to: {path}", file=sys.stderr)
+
+    # Auto-generate schedule every 5 minutes.
+    if args.schedule:
+        if not args.target:
+            print("❌ --schedule membutuhkan --target <nomor>", file=sys.stderr)
+            return
+
+        wa_client = WhatsAppClient()
+        if args.method == "pywhatkit":
+            if not PYWHATKIT_AVAILABLE:
+                print("❌ pywhatkit tidak tersedia. Jalankan: pip install pywhatkit", file=sys.stderr)
+                return
+            wa_client.connect_pywhatkit()
+        else:
+            if not SELENIUM_AVAILABLE or not wa_client.connect_selenium():
+                print("❌ Selenium tidak tersedia / gagal konek.", file=sys.stderr)
+                return
+
+        bot.set_whatsapp_client(wa_client, args.target)
+        # start_schedule is async and kicks off the background loop — MUST await it,
+        # otherwise the coroutine never runs, schedule_active stays False, and the
+        # while loop below exits immediately.
+        print(await bot.start_schedule(wa_client, args.target))
+        try:
+            while bot.schedule_active:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            print(bot.stop_schedule())
+
+
+async def _demo(bot) -> None:
+    """Print a formatted sample script and exercise a few commands."""
+    print("=" * 50)
+    print("🎬 YouTube Shorts WhatsApp Bot - demo")
+    print("=" * 50)
+
     script = bot.generate_script()
-    print(f"✅ Generated: {script['meta']['topic']}")
+    print(f"\n✅ Generated: {script['meta']['topic']}")
     print(f"📌 Title: {script['youtube_metadata']['title']}")
-    
-    # Print formatted message
     print("\n" + "=" * 50)
     print("PREVIEW (WhatsApp Format):")
     print("=" * 50)
     print(bot.format_script_message(script))
-    
-    # Test WhatsApp Client
-    print("\n" + "=" * 50)
-    print("WHATSAPP CLIENT:")
-    print("=" * 50)
-    
-    wa_client = WhatsAppClient()
-    
-    # Check if pywhatkit is available
-    if PYWHATKIT_AVAILABLE:
-        print("✅ pywhatkit available")
-        wa_client.connect_pywhatkit()
-    else:
-        print("❌ pywhatkit not installed")
-        print("💡 Run: pip install pywhatkit")
-    
-    # Test all commands
+
     print("\n" + "=" * 50)
     print("TESTING COMMANDS:")
     print("=" * 50)
-    
-    test_commands = ["!help", "!topics", "!stats", "!list"]
-    for cmd in test_commands:
+    for cmd in ["!help", "!topics", "!stats", "!list", "!schedule"]:
         print(f"\n> {cmd}")
         print(bot.handle_command(cmd))
-    
-    # Usage example
-    print("\n" + "=" * 50)
-    print("USAGE EXAMPLE:")
-    print("=" * 50)
-    print("""
-# Send script to WhatsApp
-phone = "+6281234567890"  # Ganti dengan nomor HP kamu
-message = bot.format_script_message(bot.generate_script("Teknologi & Gadget"))
-wa_client.send_message(phone, message)
-    """)
-    
-    return bot, wa_client
+
+
+def cli(argv=None) -> int:
+    """Console-script entry point (sync wrapper around the async driver)."""
+    args = _parse_args(argv)
+    try:
+        asyncio.run(run_cli(args))
+    except KeyboardInterrupt:
+        return 130
+    return 0
 
 
 if __name__ == "__main__":
-    bot, wa_client = asyncio.run(main())
+    raise SystemExit(cli())

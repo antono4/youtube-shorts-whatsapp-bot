@@ -6,7 +6,8 @@ Auto-generated vertical short-form video scripts every 5 minutes
 import json
 import random
 from datetime import datetime
-from typing import Dict, List
+from pathlib import Path
+from typing import Dict, List, Optional
 
 # Niche topics in Bahasa Indonesia
 NICHES = [
@@ -189,20 +190,43 @@ class YouTubeShortsGenerator:
         self.current_niche_index = 0
     
     def get_next_niche(self) -> Dict:
-        """Get next niche that hasn't been used recently"""
-        niche = self.niches[self.current_niche_index]
-        self.current_niche_index = (self.current_niche_index + 1) % len(self.niches)
-        return niche
-    
+        """Return the next niche, cycling through every niche before any repeats.
+
+        ``used_topics`` tracks the current cycle so ``generate_all_niches`` covers
+        every niche exactly once; the rotation restarts once all niches have been
+        used.
+        """
+        if len(self.used_topics) >= len(self.niches):
+            self.used_topics.clear()
+
+        for _ in range(len(self.niches)):
+            niche = self.niches[self.current_niche_index]
+            self.current_niche_index = (self.current_niche_index + 1) % len(self.niches)
+            if niche["name"] not in self.used_topics:
+                return niche
+        # Unreachable in practice (there is always an unused niche after the
+        # clear above); kept as a defensive fallback.
+        return self.niches[0]
+
+    @staticmethod
+    def _format_timestamp(seconds: int) -> str:
+        """Format a duration in seconds as ``MM:SS``, rolling over minutes."""
+        minutes, secs = divmod(seconds, 60)
+        return f"{minutes:02d}:{secs:02d}"
+
     def generate_hook(self, statement: str) -> str:
         """Generate attention-grabbing hook"""
         template = random.choice(HOOK_TEMPLATES)
         return template.format(statement=statement)
-    
+
     def create_content_segment(self, text: str, index: int, niche: Dict) -> Dict:
-        """Create a content segment with B-roll, text overlay, and SFX"""
+        """Create a content segment with B-roll, text overlay, and SFX
+
+        Each segment is 5 seconds long, starting at ``index * 5`` seconds.
+        """
+        start = index * 5
         return {
-            "timestamp_range": f"00:{index * 5:02d} - 00:{index * 5 + 5:02d}" if index * 5 < 60 else f"01:{index * 5 - 60:02d} - 01:{index * 5 + 5 - 60:02d}",
+            "timestamp_range": f"{self._format_timestamp(start)} - {self._format_timestamp(start + 5)}",
             "voiceover": text,
             "visual_broll": f"Engaging visuals related to: {text[:50]}...",
             "text_overlay": text[:30] + "..." if len(text) > 30 else text,
@@ -232,7 +256,11 @@ class YouTubeShortsGenerator:
     def generate_script(self, niche: str = None) -> Dict:
         """Generate complete YouTube Shorts script"""
         if niche:
-            selected_niche = next((n for n in self.niches if n["name"] == niche), self.get_next_niche())
+            target = niche.strip().lower()
+            selected_niche = next(
+                (n for n in self.niches if n["name"].lower() == target),
+                self.get_next_niche(),
+            )
         else:
             selected_niche = self.get_next_niche()
         
@@ -240,22 +268,23 @@ class YouTubeShortsGenerator:
         template = random.choice(niche_templates)
         
         content_segments = []
-        
+
         # Hook segment (0-5 seconds)
         hook_text = f"{template['statement']} {template['problem']}"
         content_segments.append(self.create_content_segment(hook_text, 0, selected_niche))
-        
-        # Problem explanation (5-15 seconds)
+
+        # Problem explanation (5-10 seconds)
         problem_text = template['problem']
         content_segments.append(self.create_content_segment(problem_text, 1, selected_niche))
-        
-        # Tips (15-35 seconds) - 5 tips, 4 seconds each
-        for i, tip in enumerate(template['tips'][:4], start=3):
-            content_segments.append(self.create_content_segment(f"TIPS #{i-2}: {tip}", i, selected_niche))
-        
-        # CTA + Loop (35-40 seconds)
+
+        # Tips - a 5-second segment per tip, contiguous after the hook/problem
+        for i, tip in enumerate(template['tips'], start=2):
+            content_segments.append(self.create_content_segment(f"TIPS #{i - 1}: {tip}", i, selected_niche))
+
+        # CTA + Loop - placed on the next free index (no timestamp collisions)
+        cta_index = len(content_segments)
         cta_text = f"{template['cta']} {template['statement']} {template['problem']}"
-        content_segments.append(self.create_content_segment(cta_text, 7, selected_niche))
+        content_segments.append(self.create_content_segment(cta_text, cta_index, selected_niche))
         
         # Generate metadata
         title = f"{random.choice(['🚨', '⚠️', '❌', '✅', '🔥', '💡', '😱', '🎯'])} {template['statement'][:45]}!"
@@ -282,15 +311,21 @@ class YouTubeShortsGenerator:
         """Generate scripts for all niches"""
         return [self.generate_script() for _ in range(len(self.niches))]
     
-    def save_script(self, script: Dict, filename: str = None):
-        """Save script to JSON file"""
+    def save_script(self, script: Dict, filename: Optional[str] = None, output_dir: str = "scripts") -> str:
+        """Save script to a JSON file.
+
+        Creates ``output_dir`` if missing. Returns the path that was written.
+        """
         if not filename:
             filename = f"shorts_script_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        
-        with open(f"scripts/{filename}", "w", encoding="utf-8") as f:
+
+        path = Path(output_dir) / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(script, f, ensure_ascii=False, indent=2)
-        
-        return filename
+
+        return str(path)
 
 
 def main():
@@ -310,9 +345,9 @@ def main():
     print(json.dumps(script, ensure_ascii=False, indent=2))
     
     # Save to file
-    filename = generator.save_script(script)
-    print(f"\n✅ Script saved to: scripts/{filename}")
-    
+    path = generator.save_script(script)
+    print(f"\n✅ Script saved to: {path}")
+
     return script
 
 
