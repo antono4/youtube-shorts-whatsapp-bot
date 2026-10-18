@@ -1,1 +1,31 @@
-Last updated: 2026-10-19 01:35:14 WIB
+# youtube-shorts-whatsapp-bot
+
+
+
+## 📋 Overview
+
+This repository contains **16 files** and is built with the following technologies:
+
+Not detected
+
+## 🚀 Quick Start
+
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+## ✨ Features
+
+- 📝 Auto-generated documentation
+
+## 🛠️ Technologies
+
+Not detected
+
+## 📄 License
+
+MIT License
+
+---
+*Last updated: 2026-10-19 01:51:28 WIB*
